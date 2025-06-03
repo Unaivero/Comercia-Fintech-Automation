@@ -15,18 +15,18 @@ public class ConfigReader {
         try (InputStream input = new FileInputStream(CONFIG_FILE_PATH)) {
             properties.load(input);
             System.out.println("Config properties loaded successfully from: " + CONFIG_FILE_PATH);
+            validateRequiredProperties();
         } catch (IOException ex) {
             System.err.println("Error loading config properties file: " + CONFIG_FILE_PATH);
             ex.printStackTrace();
-            // Consider throwing a runtime exception here if config is critical
-            // throw new RuntimeException("Could not load config.properties", ex);
+            throw new RuntimeException("Could not load config.properties", ex);
         }
     }
 
     /**
      * Gets a property value from the config.properties file.
      * @param key The property key.
-     * @return The property value, or null if the key is not found or an error occurred.
+     * @return The property value, or null if the key is not found.
      */
     public static String getProperty(String key) {
         String value = properties.getProperty(key);
@@ -37,26 +37,86 @@ public class ConfigReader {
     }
 
     /**
-     * Gets a property value from the config.properties file.
-     * If the key is not found, returns the specified default value.
+     * Gets a property value with default fallback.
      * @param key The property key.
      * @param defaultValue The value to return if the key is not found.
      * @return The property value, or the defaultValue if the key is not found.
      */
     public static String getProperty(String key, String defaultValue) {
-        return properties.getProperty(key, defaultValue);
+        String value = properties.getProperty(key, defaultValue);
+        if (value.equals(defaultValue)) {
+            System.out.println("Using default value for key '" + key + "': " + defaultValue);
+        }
+        return value;
     }
 
-    // Example of how to get an integer property (add more types as needed)
+    /**
+     * Gets an integer property with validation.
+     */
     public static int getIntProperty(String key, int defaultValue) {
         String value = getProperty(key);
         if (value != null) {
             try {
                 return Integer.parseInt(value);
             } catch (NumberFormatException e) {
-                System.err.println("Error parsing integer for key: " + key + ", value: " + value + ". Returning default.");
+                System.err.println("Error parsing integer for key: " + key + ", value: " + value + ". Using default: " + defaultValue);
             }
         }
         return defaultValue;
+    }
+
+    /**
+     * Gets a boolean property with validation.
+     */
+    public static boolean getBooleanProperty(String key, boolean defaultValue) {
+        String value = getProperty(key);
+        if (value != null) {
+            return Boolean.parseBoolean(value);
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Gets a double property with validation.
+     */
+    public static double getDoubleProperty(String key, double defaultValue) {
+        String value = getProperty(key);
+        if (value != null) {
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException e) {
+                System.err.println("Error parsing double for key: " + key + ", value: " + value + ". Using default: " + defaultValue);
+            }
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Validates that required properties exist.
+     */
+    private static void validateRequiredProperties() {
+        String[] requiredKeys = {
+            "browser",
+            "test.card.valid",
+            "test.card.expired"
+        };
+
+        for (String key : requiredKeys) {
+            if (getProperty(key) == null) {
+                throw new RuntimeException("Required property missing: " + key);
+            }
+        }
+    }
+
+    /**
+     * Gets environment-specific property.
+     */
+    public static String getEnvironmentProperty(String key) {
+        String environment = getProperty("environment", "test");
+        String envKey = environment + "." + key;
+        String envValue = getProperty(envKey);
+        
+        // Fallback to non-environment specific if env-specific not found
+        return envValue != null ? envValue : getProperty(key);
     }
 }

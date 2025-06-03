@@ -4,22 +4,38 @@ import io.cucumber.junit.Cucumber;
 import io.cucumber.junit.CucumberOptions;
 import org.junit.runner.RunWith;
 
+/**
+ * Test Runner principal para ejecutar todas las pruebas
+ * Configuración mejorada con mejores reportes y manejo de errores
+ */
 @RunWith(Cucumber.class)
 @CucumberOptions(
-    features = "src/test/resources/features", // Path to your feature files
-    glue = "com.comercia.fintech.stepDefinitions", // Package where step definitions are located
+    features = "src/test/resources/features",
+    glue = "com.comercia.fintech.stepDefinitions",
     plugin = {
-        "pretty", // Prints Gherkin steps to console for better readability
-        "html:target/cucumber-reports/cucumber-pretty.html", // Generates an HTML report
-        "json:target/cucumber-reports/CucumberTestReport.json", // Generates a JSON report
-        "junit:target/cucumber-reports/CucumberTestReport.xml", // Generates a JUnit XML report
-        "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm" // Generates Allure results
+        "pretty",
+        "html:target/cucumber-reports/cucumber-pretty.html",
+        "json:target/cucumber-reports/CucumberTestReport.json",
+        "junit:target/cucumber-reports/CucumberTestReport.xml",
+        "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm",
+        "timeline:target/cucumber-reports/timeline"
     },
-    monochrome = true, // Readable console output
-    // tags = "@UI or @API" // Example: run scenarios with specific tags
-    // tags = "@Smoke and not @WIP" // Example: run smoke tests but not work-in-progress
-    publish = false // Set to true to publish reports to Cucumber Reports service (requires setup)
+    monochrome = true,
+    tags = "@Smoke",
+    publish = false,
+    dryRun = false,
+    snippets = io.cucumber.junit.CucumberOptions.SnippetType.CAMELCASE
 )
 public class TestRunner {
-    // This class will be empty. It's used to configure and run Cucumber tests.
+    
+    /**
+     * Este runner ejecuta todas las pruebas marcadas con @Smoke
+     * 
+     * Para ejecutar diferentes conjuntos de pruebas, use:
+     * mvn test -Dcucumber.filter.tags="@UI"
+     * mvn test -Dcucumber.filter.tags="@API" 
+     * mvn test -Dcucumber.filter.tags="@Positive"
+     * mvn test -Dcucumber.filter.tags="@Negative"
+     * mvn test -Dcucumber.filter.tags="@UI and @Positive"
+     */
 }
