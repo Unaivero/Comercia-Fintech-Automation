@@ -1,0 +1,125 @@
+        - name: HUB_HOST
+          value: selenium-hub
+        - name: HUB_PORT
+          value: "4444"
+        - name: NODE_MAX_INSTANCES
+          value: "2"
+        - name: NODE_MAX_SESSION
+          value: "2"
+        - name: SE_EVENT_BUS_HOST
+          value: selenium-hub
+        - name: SE_EVENT_BUS_PUBLISH_PORT
+          value: "4442"
+        - name: SE_EVENT_BUS_SUBSCRIBE_PORT
+          value: "4443"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+
+---
+# Test Runner Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fintech-test-runner
+  namespace: fintech-testing
+  labels:
+    app: test-runner
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-runner
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: test-runner
+        image: comercia/fintech-automation:latest
+        imagePullPolicy: Always
+        env:
+        - name: SELENIUM_GRID_URL
+          value: "http://selenium-hub:4444/wd/hub"
+        - name: ENVIRONMENT
+          value: "kubernetes"
+        - name: PARALLEL_EXECUTION
+          value: "true"
+        - name: THREAD_COUNT
+          value: "5"
+        - name: BROWSER
+          value: "chrome"
+        - name: HEADLESS
+          value: "true"
+        volumeMounts:
+        - name: test-config
+          mountPath: /test-framework/src/test/resources/config.properties
+          subPath: config.properties
+        - name: test-results
+          mountPath: /test-framework/target
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: test-config
+        configMap:
+          name: test-config
+      - name: test-results
+        persistentVolumeClaim:
+          claimName: test-results-pvc
+
+---
+# PersistentVolumeClaim for test results
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-results-pvc
+  namespace: fintech-testing
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# HorizontalPodAutoscaler for Chrome nodes
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chrome-node-hpa
+  namespace: fintech-testing
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: chrome-node
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

@@ -1,0 +1,244 @@
+version: '3.8'
+
+services:
+  # Selenium Grid Hub
+  selenium-hub:
+    image: selenium/hub:4.15.0-20231129
+    container_name: selenium-hub
+    ports:
+      - "4444:4444"
+      - "4442:4442"
+      - "4443:4443"
+    environment:
+      - GRID_MAX_SESSION=16
+      - GRID_BROWSER_TIMEOUT=300
+      - GRID_TIMEOUT=300
+      - GRID_NEW_SESSION_WAIT_TIMEOUT=60
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Chrome Nodes
+  chrome-node:
+    image: selenium/node-chrome:4.15.0-20231129
+    deploy:
+      replicas: 3
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+      - NODE_MAX_INSTANCES=3
+      - NODE_MAX_SESSION=3
+      - SE_EVENT_BUS_HOST=selenium-hub
+      - SE_EVENT_BUS_PUBLISH_PORT=4442
+      - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Firefox Nodes
+  firefox-node:
+    image: selenium/node-firefox:4.15.0-20231129
+    deploy:
+      replicas: 2
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+      - NODE_MAX_INSTANCES=2
+      - NODE_MAX_SESSION=2
+      - SE_EVENT_BUS_HOST=selenium-hub
+      - SE_EVENT_BUS_PUBLISH_PORT=4442
+      - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Edge Nodes
+  edge-node:
+    image: selenium/node-edge:4.15.0-20231129
+    deploy:
+      replicas: 2
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+      - NODE_MAX_INSTANCES=2
+      - NODE_MAX_SESSION=2
+      - SE_EVENT_BUS_HOST=selenium-hub
+      - SE_EVENT_BUS_PUBLISH_PORT=4442
+      - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Test Runner Container
+  test-runner:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: fintech-test-runner
+    depends_on:
+      - selenium-hub
+      - chrome-node
+      - firefox-node
+      - edge-node
+    volumes:
+      - ./target:/test-framework/target
+      - ./reports:/test-framework/reports
+      - ./logs:/test-framework/logs
+    environment:
+      - SELENIUM_GRID_URL=http://selenium-hub:4444/wd/hub
+      - ENVIRONMENT=docker
+      - BROWSER=chrome
+      - PARALLEL_EXECUTION=true
+      - THREAD_COUNT=5
+      - HEADLESS=true
+      - VNC_ENABLED=false
+    networks:
+      - test-network
+    restart: "no"
+
+  # Allure Report Server
+  allure-server:
+    image: frankescobar/allure-docker-service:2.23.1
+    container_name: allure-server
+    depends_on:
+      - test-runner
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./target/allure-results:/app/allure-results
+      - ./target/allure-reports:/app/default-reports
+      - ./reports/allure-history:/app/allure-history
+    environment:
+      CHECK_RESULTS_EVERY_SECONDS: 10
+      KEEP_HISTORY: 20
+      KEEP_HISTORY_LATEST: 25
+      SECURITY_ENABLED: "false"
+      MAKE_VIEWER_ENDPOINTS_PUBLIC: "true"
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: test-metrics-dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=fintech123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # InfluxDB for time-series data
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - ./monitoring/influxdb.conf:/etc/influxdb2/influx-configs
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=fintech123
+      - DOCKER_INFLUXDB_INIT_ORG=comercia
+      - DOCKER_INFLUXDB_INIT_BUCKET=test-metrics
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # ELK Stack for log management
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./monitoring/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./logs:/usr/share/logstash/logs
+    depends_on:
+      - elasticsearch
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - test-network
+    restart: unless-stopped
+
+volumes:
+  grafana-storage:
+  prometheus-data:
+  influxdb-data:
+  elasticsearch-data:
+
+networks:
+  test-network:
+    driver: bridge

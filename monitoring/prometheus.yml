@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Test framework metrics
+  - job_name: 'test-framework'
+    static_configs:
+      - targets: ['test-runner:8080']
+    scrape_interval: 10s
+    metrics_path: '/actuator/prometheus'
+
+  # Selenium Grid metrics
+  - job_name: 'selenium-hub'
+    static_configs:
+      - targets: ['selenium-hub:4444']
+    metrics_path: '/wd/hub/status'
+
+  # Node exporter for system metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # InfluxDB metrics
+  - job_name: 'influxdb'
+    static_configs:
+      - targets: ['influxdb:8086']
+    metrics_path: '/metrics'
+
+  # Custom application metrics
+  - job_name: 'custom-metrics'
+    static_configs:
+      - targets: ['localhost:8081']
+    scrape_interval: 5s
